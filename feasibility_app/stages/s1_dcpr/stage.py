@@ -93,4 +93,5 @@ class DCPRStage:
             "formula_text": "admissible TDR FSI, TABLE 12"})
 
         return StageResult.ok(
-            [fsi_tv, base_fsi_tv, prem_fsi_tv, tdr_fsi_tv])
+            [fsi_tv, base_fsi_tv, prem_fsi_tv, tdr_fsi_tv],
+            bucket="regulatory_inputs")

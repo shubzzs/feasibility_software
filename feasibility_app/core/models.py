@@ -160,6 +160,12 @@ class StageResult(BaseModel):
     values: list[TracedValue] = Field(default_factory=list)
     flags: list[Flag] = Field(default_factory=list)
     blocking_reasons: list[str] = Field(default_factory=list)
+    bucket: str | None = None
+    """Context bucket these values belong in ('regulatory_inputs', 'areas', ...).
+
+    Set by the stage itself. The pipeline falls back to its own stage->bucket
+    map when this is None, so a stage that forgets to declare one still works.
+    """
 
     @property
     def blocked(self) -> bool:
@@ -167,10 +173,11 @@ class StageResult(BaseModel):
 
     @classmethod
     def ok(cls, values: list[TracedValue] | None = None,
-           flags: list[Flag] | None = None) -> "StageResult":
+           flags: list[Flag] | None = None,
+           bucket: str | None = None) -> "StageResult":
         flags = flags or []
         status: StageStatus = "PASS_WITH_FLAGS" if flags else "PASS"
-        return cls(status=status, values=values or [], flags=flags)
+        return cls(status=status, values=values or [], flags=flags, bucket=bucket)
 
     @classmethod
     def blocked_on(cls, reasons: list[str],
@@ -266,6 +273,12 @@ class ProjectContext(BaseModel):
     derived: dict[str, TracedValue] = Field(default_factory=dict)
 
     regulatory: RegulatoryDataset | None = None
+    regulatory_inputs: dict[str, TracedValue] = Field(default_factory=dict)
+    """Numeric limits published by Stage 1 (FSI bands, premiums, TDR).
+
+    Kept separate from `derived` so the report can show provenance honestly:
+    these come from the regulation, not from a user input plus a formula.
+    """
     land_rate: TracedValue | None = None
 
     areas: dict[str, TracedValue] = Field(default_factory=dict)
@@ -279,7 +292,8 @@ class ProjectContext(BaseModel):
     def get(self, name: str) -> TracedValue | None:
         """Look up a named value across all stages (later stages win)."""
         for bucket in (self.financials, self.revenues, self.costs,
-                       self.areas, self.derived, self.extra_inputs):
+                       self.areas, self.derived, self.regulatory_inputs,
+                       self.extra_inputs):
             if name in bucket:
                 return bucket[name]
         if self.land_rate is not None and self.land_rate.name == name:

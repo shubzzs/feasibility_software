@@ -54,8 +54,9 @@ class Pipeline:
                     completed=completed, blocked_at=stage.name,
                     reasons=[reason], flags=all_flags)
 
-            # write values onto the shared context
-            bucket = STAGE_OUTPUT_BUCKET.get(stage.name)
+            # write values onto the shared context; the stage declares its own
+            # bucket, falling back to the map below for older stages
+            bucket = result.bucket or STAGE_OUTPUT_BUCKET.get(stage.name)
             if bucket:
                 for tv in result.values:
                     ctx.put(bucket, tv)
@@ -81,10 +82,11 @@ class Pipeline:
         return ctx, PipelineReport(completed=completed, flags=all_flags)
 
 
-# Which context bucket each stage writes its TracedValues into.
+# Which context bucket each stage writes its TracedValues into. A stage may
+# override this by setting StageResult.bucket on its own result.
 STAGE_OUTPUT_BUCKET = {
     "s0_input": "derived",
-    "s1_dcpr": None,          # writes ctx.regulatory directly
+    "s1_dcpr": "regulatory_inputs",   # FSI bands, premiums, TDR limits
     "s2_landrate": "land_rate",
     "s3_area": "areas",
     "s4_cost": "costs",

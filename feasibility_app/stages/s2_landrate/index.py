@@ -20,18 +20,25 @@ from pathlib import Path
 def normalize_cs(raw: str) -> str:
     """Normalize a Cadastral Survey number to one canonical form.
 
-    Handles the awkward real-world variants we saw in the RR tables:
-      "CS No. 123/A"  -> "123A"
-      "C.S.No.123 A"  -> "123A"
-      "123~"          -> "123"   (sub-division marker dropped by default)
-      "O.S./C.S. 45"  -> "45"
+    Handles the awkward real-world variants seen in the RR tables:
+      "CS No. 123/A"  -> "123A"     "S. No. 45/2"   -> "452"
+      "C.S.No.123 A"  -> "123A"     "O.S./C.S. 45"  -> "45"
+      "123~"          -> "123"      (sub-division marker dropped by default)
+
+    Method: tokenize on anything that is not a letter or digit, drop known
+    prefix tokens (CS/C S/O S/S NO/NO/PLOT and single filler letters), keep the
+    rest. Tokenizing first is what makes dotted forms work: in "C.S." the dot
+    is already a word boundary, so a \\b-based pattern lets the letters survive.
     """
-    s = raw.upper()
-    s = re.sub(r"\b(?:C\.?\s*S\.?\s*NO\.?|O\.?\s*S\.?|CS)\b", "", s)  # drop prefixes
-    s = re.sub(r"[^0-9A-Z/~\-]", "", s)                              # keep core chars
-    s = s.replace("~", "").replace("-", "")                          # sub-division marks
-    s = re.sub(r"/", "", s)                                           # separators
-    return s.strip()
+    filler = {"CS", "C", "S", "OS", "O", "NO", "N", "PLOT", "OF", "AND"}
+    # Undotted compounds ("SNo", "CSno") collapse into one token, so peel them.
+    compound = re.compile(r"^(?:CS|OS|S)?\s*NO?$")
+    out: list[str] = []
+    for tok in re.split(r"[^A-Z0-9]+", raw.upper()):
+        if not tok or tok in filler or compound.match(tok):
+            continue
+        out.append(tok)
+    return "".join(out)
 
 
 # --------------------------------------------------------------------------- #

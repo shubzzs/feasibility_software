@@ -9,7 +9,8 @@ import uuid
 from decimal import Decimal
 
 from .core.audit import AuditLogger
-from .core.models import BaseInputs, ProjectContext
+from .core.models import (BaseInputs, ProjectContext, Provenance, QuantityKind,
+                          TracedValue)
 from .core.pipeline import Pipeline
 from .stages.s0_input.stage import InputStage
 from .stages.s1_dcpr.stage import DCPRStage
@@ -40,6 +41,21 @@ def build_index(db_path="data/processed/rr_rates.db") -> LandRateIndex:
     return idx
 
 
+def demo_usage_value() -> TracedValue:
+    """Disambiguator for the two-match CS 123A demo row (residential usage)."""
+    from .core.models import Provenance, QuantityKind
+    return TracedValue(
+        name="usage", value=None, text="RESIDENTIAL", unit="",
+        kind=QuantityKind.OTHER, provenance=Provenance.USER_INPUT,
+        remark="User-selected RR row disambiguator.")
+
+
+def make_stages(index: LandRateIndex | None = None) -> list:
+    """The stage list, in order. Shared by run_demo and the tests."""
+    return [InputStage(), DCPRStage(), LandRateStage(index or build_index()),
+            AreaStage(), CostStage(), RevenueStage(), ReportStage(), PdfStage()]
+
+
 def main() -> None:
     run_id = uuid.uuid4().hex[:12]
     audit = AuditLogger(run_id)
@@ -49,15 +65,9 @@ def main() -> None:
                         plot_area_sqm=Decimal("1000"), road_width_m=Decimal("18.5"),
                         section_id="DCPR_30_BASE"))
     # demo disambiguator: residential usage for the two-match CS 123A
-    from .core.models import Provenance, QuantityKind, TracedValue
-    ctx.extra_inputs["usage"] = TracedValue(
-        name="usage", value=None, text="RESIDENTIAL", unit="",
-        kind=QuantityKind.OTHER, provenance=Provenance.USER_INPUT,
-        remark="User-selected RR row disambiguator.")
+    ctx.extra_inputs["usage"] = demo_usage_value()
 
-    stages = [InputStage(), DCPRStage(), LandRateStage(build_index()),
-              AreaStage(), CostStage(), RevenueStage(), ReportStage(), PdfStage()]
-    pipe = Pipeline(stages, audit)
+    pipe = Pipeline(make_stages(), audit)
     ctx, report = pipe.run(ctx)
 
     print(f"run {run_id}: completed={report.completed} "
