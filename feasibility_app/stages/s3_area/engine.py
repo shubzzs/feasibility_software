@@ -170,16 +170,40 @@ class PermissibleBUAStep(CalcStep):
         return net * fsi
 
 
+class ZonalBasicFSIStep(CalcStep):
+    """Reads the hand-encoded TABLE 12 value published by Stage 1.
+
+    A *lookup* node rather than an arithmetic one: making it an explicit DAG
+    step gives every downstream area a traceable upstream edge instead of
+    silently reaching into the context mid-calculation.
+    """
+
+    name = "fsi_zonal_basic"
+    unit = "ratio"
+    kind = QuantityKind.RATIO
+    formula_id = "FSI_TABLE12_LOOKUP"
+    formula_version = "1.0"
+    formula_text = "zonal_basic_fsi := TABLE 12 row for the applicable road-width band"
+    dcpr_ref_keys = ["TABLE 12"]
+    depends_on: list[str] = []
+
+    def compute(self, ctx, vals):
+        fsi = ctx.value_of("zonal_basic_fsi")
+        if fsi is None:
+            raise RuntimeError("Stage 1 did not publish zonal_basic_fsi")
+        return fsi
+
+
 class BaseBUAStep(PermissibleBUAStep):
     name = "base_bua_sqm"
     formula_id = "AREA_BASE_BUA"
     formula_text = "BUA_base = net_plot_area x zonal_basic_fsi"
     dcpr_ref_keys = ["TABLE 12"]
-    depends_on = ["net_plot_area_sqm"]
+    depends_on = ["net_plot_area_sqm", "fsi_zonal_basic"]
 
     def compute(self, ctx, vals):
         net = vals["net_plot_area_sqm"].value
-        fsi = ctx.value_of("zonal_basic_fsi")
+        fsi = vals["fsi_zonal_basic"].value
         if net is None or fsi is None:
             raise RuntimeError("inputs unavailable for base BUA")
         return net * fsi
@@ -195,7 +219,8 @@ class Reg30BaseSlice(AreaCalculator):
         return ["plot_area_sqm", "road_width_m", "permissible_fsi"]
 
     def steps(self):
-        return [NetPlotAreaStep(), BaseBUAStep(), PermissibleBUAStep()]
+        return [NetPlotAreaStep(), ZonalBasicFSIStep(), BaseBUAStep(),
+                PermissibleBUAStep()]
 
     def verify(self, results: list[TracedValue],
                reg: RegulatoryDataset) -> list[Flag]:
